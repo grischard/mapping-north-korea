@@ -24,10 +24,24 @@
 <script>
 import MapApiService from '@/services/MapApiService';
 import EventBus from '@/services/EventBus';
+import {Map, View} from 'ol';
+import Tile from 'ol/layer/Tile';
+import OSM from 'ol/source/OSM';
+import {fromLonLat} from 'ol/proj';
+import GeoJSON from 'ol/format/GeoJSON';
+import VectorLayer from 'ol/layer/Vector';
+import VectorSource from 'ol/source/Vector';
+import {Style, Fill, Stroke} from 'ol/style';
 
 const defaultStyle = {
     weight: 1,
     opacity: 0.6
+};
+const hexToRgba = function (hex, opacity) {
+    hex = hex.replace(/^#?([a-f\d])([a-f\d])([a-f\d])$/i, (m, r, g, b) => '#' + r + r + g + g + b + b)
+        .substring(1).match(/.{2}/g)
+        .map(x => parseInt(x, 16));  
+    return `rgba(${hex[0]}, ${hex[1]}, ${hex[2]}, ${opacity})`;
 };
 
 export default {
@@ -93,32 +107,65 @@ export default {
     },
     methods: {
         initMap: function () {
-            // eslint-disable-next-line
-            this.map = L.map('map').on('click', this.clickMapEvent).setView([ 39.686, 127.500 ], 7);
+            this.map = new Map({
+                layers: [
+                    new Tile({
+                        source: new OSM()
+                    })
+                ],
+                target: 'map',
+                view: new View({
+                    projection: 'EPSG:4326',
+                    center: [ 127.500, 39.686 ],
+                    zoom: 7
+                })
+            });
+
+            this.map.on('click', this.clickMapEvent);
 
             // eslint-disable-next-line
-            this.lightTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            });
-            // eslint-disable-next-line
-            this.darkTileLayer = L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
-                maxZoom: 19,
-                attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            });
+            // this.lightTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            //     maxZoom: 19,
+            //     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            // });
+            // // eslint-disable-next-line
+            // this.darkTileLayer = L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+            //     maxZoom: 19,
+            //     attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            // });
 
-            if (localStorage.darkTheme && localStorage.darkTheme === 'true') {
-                this.darkTileLayer.addTo(this.map);
-            } else {
-                this.lightTileLayer.addTo(this.map);
-            }
+            // if (localStorage.darkTheme && localStorage.darkTheme === 'true') {
+            //     this.darkTileLayer.addTo(this.map);
+            // } else {
+            //     this.lightTileLayer.addTo(this.map);
+            // }
 
             EventBus.$emit('mnk:start-loading', 'loadingsectors');
             MapApiService.getAllSectors().then((res) => {
                 this.sectors = this.sectorsToGeoJson(res.data);
 
                 // eslint-disable-next-line
-                this.geoJsonLayer = L.geoJSON(this.sectors, {
+                var sectorsLayer = new VectorLayer({
+                    source: new VectorSource({
+                        features: (new GeoJSON()).readFeatures(this.sectors)
+                    }),
+                    style: function (feature) {
+                        return new Style({
+                            fill: new Fill({
+                                color: hexToRgba(feature.values_.state.color, defaultStyle.opacity)
+                            }),
+                            stroke: new Stroke({
+                                color: hexToRgba(feature.values_.state.color, defaultStyle.opacity),
+                                width: defaultStyle.weight
+                            })
+                        });
+                    }
+                });
+
+                this.map.addLayer(sectorsLayer);
+
+                // eslint-disable-next-line
+                /*this.geoJsonLayer = L.geoJSON(this.sectors, {
                     style: (feature) => {
                         return {
                             color: feature.properties.state.color,
@@ -131,15 +178,15 @@ export default {
                     // eslint-disable-next-line
                     L.DomEvent.stopPropagation(event);
                     return false;
-                }).addTo(this.map);
+                }).addTo(this.map);*/
 
                 if (this.$route.params.sectorId) {
                     this.setSectorSelected(this.getSectorLayerById(this.$route.params.sectorId), true);
                     this.flyToSectorByPolygonCoordinates(this.selectedSector.feature.geometry.coordinates[0]);
                 }
-            }).catch(() => {
-                EventBus.$emit('mnk:message-error', this.$('request.load_sectors'));
-            }).finally(() => {
+            })/*.catch(() => {
+                EventBus.$emit('mnk:message-error', this.$t('request.load_sectors'));
+            })*/.finally(() => {
                 EventBus.$emit('mnk:stop-loading', 'loadingsectors');
             });
         },

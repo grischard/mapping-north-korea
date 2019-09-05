@@ -11,6 +11,10 @@ const rateLimit = require("express-rate-limit");
 const fs = require("fs");
 const exec = require("child_process").exec;
 
+// ========================
+// Middleware configuration
+// ========================
+
 if (!fs.existsSync(".env")) {
     log.err("Error loading configuration: .env file not found. Please use the following markup:",
     'SESSION_SECRET="secret here"\n\r' +
@@ -28,14 +32,6 @@ if (!fs.existsSync(".env")) {
     return;
 }
 require('dotenv').config();
-
-const routeMain = require("./routes/main");
-const routeOsm = require("./routes/osm");
-const routeSector = require("./routes/sector");
-const routeState = require("./routes/state");
-const routeEvent = require("./routes/event");
-const routeIteration = require("./routes/iteration");
-
 log.inf("Configuring middleware...");
 const app = express();
 var mongodbConnection = "";
@@ -109,7 +105,6 @@ app.use(session({
 app.use(express.static(__dirname + "/dist"));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
-
 app.use((req, res, next) => {
     if (!req.originalUrl.includes('/api/', 0)) {
         res.sendFile(`${__dirname}/dist/index.html`);
@@ -118,7 +113,18 @@ app.use((req, res, next) => {
     }
 });
 
+// ===========
+// API Routing
+// ===========
+
 log.inf("Setting up routing...");
+const routeMain = require("./routes/main");
+const routeOsm = require("./routes/osm");
+const routeSector = require("./routes/sector");
+const routeState = require("./routes/state");
+const routeEvent = require("./routes/event");
+const routeIteration = require("./routes/iteration");
+
 //app.get("/api/main/getlocation", routeMain.getLocation);
 app.post("/api/osm/oauth/request", routeOsm.getRequestToken);
 app.get("/api/osm/oauth/callback", routeOsm.doRequestTokenCallback);
@@ -164,6 +170,16 @@ app.post('/api/webhook', (req, res) => {
         });
     });
 });
+
+// ====================
+// Background processes
+// ====================
+
+require("./background/sectorStateChange").run();
+
+// =========
+// App start
+// =========
 
 log.inf("App setup finish. Starting server...");
 app.listen(global.port, () => log.suc("Server running on port " + port));
